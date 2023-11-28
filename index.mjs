@@ -3,6 +3,7 @@ import http from 'node:http'
 import { Readable } from 'node:stream'
 import { randomBytes } from 'node:crypto'
 
+let server
 process.on('uncaughtException', (error) => {
   console.error('!!! UNCAUGHT EXCEPTION !!!\n', error)
   server.close()
@@ -13,10 +14,6 @@ let count = 0
 function getStream() {
   return new Readable({
     read(size = 16) {
-      if (count >= 100) {
-        throw Error('exceeded count')
-      }
-
       const bytes = randomBytes(size)
       const chunk = JSON.stringify({
         id: 'chatcmpl-8MzOfSMbLxEy70lYAolSwdCzfguQZ',
@@ -36,15 +33,26 @@ function getStream() {
       this.push('data: ' + chunk + '\n\n')
       count += 1
     }
-  })
+  }).pause()
 }
 
-const server = await new Promise((resolve) => {
+server = await new Promise((resolve) => {
   const server = http.createServer((req, res) => {
+    const startTime = Date.now()
     const stream = getStream()
+
     res.statusCode = 200
+    stream.on('data', () => {
+      const curTime = Date.now()
+      if (curTime - startTime >= 5_000) {
+        stream.destroy()
+        res.destroy()
+      }
+    })
+
     stream.pipe(res)
   })
+
   server.listen({ host: '127.0.0.1', port: 0 }, () => {
     resolve(server)
   })
